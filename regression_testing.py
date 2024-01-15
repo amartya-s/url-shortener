@@ -9,19 +9,19 @@ import random
 import string
 import queue
 
-host1='13.233.83.250:8080/'
-host2='65.2.129.63:8080'
-elb_eip='43.205.184.138'
-alb_dns='MyALB-300151900.ap-south-1.elb.amazonaws.com:8080'
-localhost='127.0.0.1:8000/'
+host1 = '13.233.83.250:8080/'
+host2 = '65.2.129.63:8080'
+elb_eip = '43.205.184.138'
+alb_dns = 'MyALB-300151900.ap-south-1.elb.amazonaws.com:8080'
+localhost = '127.0.0.1:8000/'
 
-hosts = [localhost]
+hosts = [elb_eip]
 
 dataset_size = 10000
-req_per_sec = 50
+req_per_sec = 100
 read_write_ratio = 0.3
 duration = 600  # in seconds'
-write_cardinality = 0.3
+write_cardinality = 0.4
 
 queue = queue.Queue()
 
@@ -40,8 +40,10 @@ def make_request(url, param):
         response = requests.get(url, params={'url': param})
         if 'retries' in response.json() and response.json()['retries'] != 0:
             print(param, "Integrity error retry %s" % (response.json()['retries']))
-        if 'cache' in response.json():
-            print(url, param, 'cache hit')
+
+
+        queue.put((url, "Success", 304 if response.json().get('cache') else 200))
+
     except Exception as e:
         # print(e)
         queue.put((url, str(e), 500))
@@ -49,7 +51,8 @@ def make_request(url, param):
     if response.status_code not in (200, 404):
         if 'retries' in response.json():
             print((url, response.json()['retries'], response.json()))
-        queue.put((url, url[-10:]+response.json()['error'] if 'error' in response.json() else response.json(), response.status_code))
+        queue.put((url, url[-10:] + response.json()['error'] if 'error' in response.json() else response.json(),
+                   response.status_code))
     return response
 
 
@@ -60,7 +63,7 @@ def foo(random_urls, read_write_ratio, write_cardinality):
     num_reqs = len(random_urls)
     reads = int(read_write_ratio * num_reqs)
     writes = int((1 - read_write_ratio) * num_reqs)
-    time_between_2_reqs = 0  # num_reqs/100000 # spread the requests
+    time_between_2_reqs = num_reqs/100000 # spread the requests
     threads = []
 
     # long url to short url
@@ -71,7 +74,8 @@ def foo(random_urls, read_write_ratio, write_cardinality):
 
     cardinality = len(long_urls_param) - len(set(long_urls_param))
     for long_url_param in long_urls_param:
-        t = threading.Thread(target=make_request, args=(short_url.format(host=hosts[random.randint(0,len(hosts)-1)]), long_url_param))
+        t = threading.Thread(target=make_request,
+                             args=(short_url.format(host=hosts[random.randint(0, len(hosts) - 1)]), long_url_param))
         t.start()
         time.sleep(time_between_2_reqs)
         threads.append(t)
@@ -79,7 +83,8 @@ def foo(random_urls, read_write_ratio, write_cardinality):
     # short url to long url
     short_urls_param = [random_urls[writes + i]['short_url'] for i in range(reads)]
     for short_url_param in short_urls_param:
-        t = threading.Thread(target=make_request, args=(long_url.format(host=hosts[random.randint(0,len(hosts)-1)]), short_url_param))
+        t = threading.Thread(target=make_request,
+                             args=(long_url.format(host=hosts[random.randint(0, len(hosts) - 1)]), short_url_param))
         t.start()
         time.sleep(time_between_2_reqs)
         threads.append(t)
@@ -88,11 +93,18 @@ def foo(random_urls, read_write_ratio, write_cardinality):
         t.join()
 
     fails = dict()
+    success = dict()
     for url, error, status_code in queue.queue:
+        if status_code in (200, 304):
+            key = (status_code, "Success" if status_code == 200 else "Cache hit")
+            if key not in success:
+                success[key] = 0
+            success[key] += 1
+            continue
         if status_code == 500 and 'Failed to establish a new connection: [Errno 60] Operation timed out' in str(error):
-            error='Failed to establish a new connection: [Errno 60] Operation timed out'
+            error = 'Failed to establish a new connection: [Errno 60] Operation timed out'
         if status_code == 500 and 'Failed to establish a new connection: [Errno 61] Connection refused' in str(error):
-            error='Failed to establish a new connection: [Errno 61] Connection refused'
+            error = 'Failed to establish a new connection: [Errno 61] Connection refused'
 
         try:
             if (status_code, error) not in fails:
@@ -103,7 +115,7 @@ def foo(random_urls, read_write_ratio, write_cardinality):
 
     queue.queue.clear()
 
-    return reads, writes, fails, cardinality
+    return reads, writes, success, fails, cardinality
 
 
 def run(new_dataset=False):
@@ -124,7 +136,7 @@ def run(new_dataset=False):
     else:
         print("Using dataset regression_testing.csv")
         testing_data = json.load(open("regression_testing.csv"))[:dataset_size]
-    print("Dataset size %s"%len(testing_data))
+    print("Dataset size %s" % len(testing_data))
 
     start_time = time.time()
 
@@ -132,14 +144,14 @@ def run(new_dataset=False):
         s = time.time()
 
         random_urls = random.sample(testing_data, req_per_sec)
-        reads, writes, fail, actual_write_cardinality = foo(random_urls, read_write_ratio, write_cardinality)
+        reads, writes, success, fail, actual_write_cardinality = foo(random_urls, read_write_ratio, write_cardinality)
 
         total_reqs += len(random_urls)
         time_diff = time.time() - s
 
-        print("Total requests %s, Current reads/writes (%s/%s); Write cardinality %s ; Fails "
+        print("Total requests %s, Current reads/writes (%s/%s); Write cardinality %s ; Success: %s ; Fails "
               "%s; %s sec" % (
-                  total_reqs, reads, writes, actual_write_cardinality, fail,
+                  total_reqs, reads, writes, actual_write_cardinality, success, fail,
                   time_diff))
 
         time.sleep(1 - time_diff if time_diff < 1 else 0)

@@ -171,8 +171,6 @@
     </div>
 
     <script>
-        var localhost = location.protocol + '//' + location.host;
-        console.log(localhost);
         function shortenUrl() {
             const originalUrl = document.getElementById('originalUrl').value;
             const shortenedLink = document.getElementById('shortenedLink');
@@ -185,7 +183,7 @@
                     console.log(data)
                     shortenedUrl = data.short_url;
                     shortenedLink.href = shortenedUrl;
-                    shortenedLink.textContent = localhost+"/"+shortenedUrl;
+                    shortenedLink.textContent = shortenedUrl;
                     const isFromCache = data.cache;
                     document.getElementById('shortenedUrl').style.display = 'flex';
                     displayStatusMessage(isFromCache, 'shortenedUrlStatus');
@@ -198,28 +196,18 @@
         }
 
         function getLongUrl() {
+            const shortUrl = document.getElementById('shortUrl').value;
             const longLink = document.getElementById('longLink');
 
-            const shortUrl = document.getElementById('shortUrl').value;
-            const urlParts = shortUrl.split('/');
-            var apiUrl = urlParts[urlParts.length - 1]+"?redirect=0";
+            var apiUrl = shortUrl+"?redirect=0";
             var longUrl = "undefined";
-
             console.log(apiUrl)
             fetch(apiUrl)
-                .then(response => response.json())
                 .then(data => {
+                    data = data.json();
                     console.log(data)
                     longUrl = data.long_url;
-                    if (longUrl == undefined){
-                        longLink.textContent = "Error "+( data.data !== undefined ? data.data: " ")+ (data.error !== undefined ? data.error : " ");
-                        longLink.removeAttribute("href")
-                        longLink.style.color = "#dc3545"
-                        return
-                    }
-                    longLink.style.color = "#0000FF";
-                    longUrlHref = !longUrl.startsWith('http://') && !longUrl.startsWith('https://') ? 'http://' + longUrl : longUrl;
-                    longLink.href = longUrlHref;
+                    longLink.href = longUrl;
                     longLink.textContent = longUrl;
                     const isFromCache = data.cache;
                     document.getElementById('longUrl').style.display = 'flex';

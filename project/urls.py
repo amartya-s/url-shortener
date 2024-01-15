@@ -20,8 +20,9 @@ from url_shortener import views
 from django.views.decorators.cache import cache_page
 
 urlpatterns = [
-    path('index/', views.index),
+    path('', views.index),
+    path('<str:short_url>', views.long_url),
+    path('index/', views.test),
     path('admin/', admin.site.urls),
-    path('long_url/', cache_page(60*60)(views.long_url)),
     path('short_url/', views.short_url)
 ]

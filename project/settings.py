@@ -72,41 +72,22 @@ WSGI_APPLICATION = 'project.wsgi.application'
 SESSIONS_ENGINE = 'django.contrib.sessions.backends.cache'
 
 
-def get_cache():
-    import os
-    try:
-        servers = os.environ['MEMCACHIER_SERVERS']
-        username = os.environ['MEMCACHIER_USERNAME']
-        password = os.environ['MEMCACHIER_PASSWORD']
-        return {
+CACHES = {
+            'default1': {
+                'BACKEND': 'django.core.cache.backends.memcached.PyMemcacheCache',
+                'LOCATION': '127.0.0.1:11211',
+            },
             'default': {
-                'BACKEND': 'django_bmemcached.memcached.BMemcached',
-                # TIMEOUT is not the connection timeout! It's the default expiration
-                # timeout that should be applied to keys! Setting it to `None`
-                # disables expiration.
-                'TIMEOUT': None,
-                'LOCATION': servers,
-                'OPTIONS': {
-                    'username': username,
-                    'password': password,
-                }
+                'BACKEND': 'django.core.cache.backends.memcached.PyMemcacheCache',
+                'LOCATION': 'mymemcahe.qun8xc.0001.aps1.cache.amazonaws.com:11211',
             }
         }
-    except:
-        return {
-            'default': {
-                'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'
-            }
-        }
-
-
-CACHES = get_cache()
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
 DATABASES = {
-    'default': {
+    'default1': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'url_shortener',
         'USER': 'root',
@@ -114,7 +95,7 @@ DATABASES = {
         'HOST': 'localhost',
         'PORT': '3306',
     },
-    'default1': {
+    'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'urlshortener',
         'USER': 'root',
